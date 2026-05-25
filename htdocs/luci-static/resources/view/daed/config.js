@@ -399,6 +399,37 @@ function renderDaeSettings() {
 /* dae 示例里的占位订阅特征 —— example.com 域名或 relative/path/to/* 路径 */
 const RE_PLACEHOLDER_URL = /(['"])((?:https?|https-file|file):\/\/[^'"]*?(?:example\.com|relative\/path\/to)[^'"]*)\1/;
 
+/* 把 example.dae 的 subscription 块瘦身成「只保留 1 行占位 + 中文引导注释」，
+   降低用户认知负担。其他块（global/node/group/routing/dns）原样保留。 */
+function simplifySubscriptionBlock(text) {
+	if (!text) return text;
+	const lines = text.split('\n');
+	let start = -1, end = -1, depth = 0;
+	for (let i = 0; i < lines.length; i++) {
+		if (start < 0) {
+			if (/^\s*subscription\s*\{/.test(lines[i])) {
+				start = i;
+				depth = 1;
+				continue;
+			}
+		} else {
+			depth += (lines[i].match(/\{/g) || []).length;
+			depth -= (lines[i].match(/\}/g) || []).length;
+			if (depth <= 0) { end = i; break; }
+		}
+	}
+	if (start < 0 || end < 0) return text;
+	/* 整块替换：保留原有 block 缩进风格（4 空格） */
+	const replacement = [
+		'subscription {',
+		'    # ⚠ 把下面这行的 URL 换成你机场的订阅链接，然后保存。',
+		'    # Replace the URL below with your real subscription link, then save.',
+		"    my_sub: 'https://www.example.com/subscription/link'",
+		'}'
+	];
+	return lines.slice(0, start).concat(replacement).concat(lines.slice(end + 1)).join('\n');
+}
+
 function detectPlaceholders(text) {
 	if (!text) return [];
 	const lines = text.split('\n');
@@ -531,7 +562,7 @@ function renderDaeEditor() {
 		flashStatus(_('Loading example…'));
 		fs.read_direct(backend.BACKENDS.dae.example, 'text')
 			.then(function(content) {
-				textarea.value = content || '';
+				textarea.value = simplifySubscriptionBlock(content || '');
 				refreshPlaceholders();
 				return fs.write(backend.BACKENDS.dae.config, textarea.value, 384);
 			})
