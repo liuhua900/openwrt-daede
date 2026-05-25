@@ -17,7 +17,8 @@ LOCK="/tmp/luci-app-daede.pkg-${PKG}.lock"
 LOG="/tmp/luci-app-daede.pkg-${PKG}.log"
 
 if [ -f "$LOCK" ]; then
-	age=$(( $(date +%s) - $(stat -c %Y "$LOCK" 2>/dev/null || echo 0) ))
+	mtime=$(date -r "$LOCK" +%s 2>/dev/null || echo 0)
+	age=$(( $(date +%s) - mtime ))
 	if [ "$age" -lt 300 ]; then
 		echo "${PKG} update already in progress (PID $(cat "$LOCK" 2>/dev/null), age ${age}s)" >&2
 		exit 75
@@ -25,8 +26,12 @@ if [ -f "$LOCK" ]; then
 	rm -f "$LOCK"
 fi
 
+if ! ( set -C; echo "$$" >"$LOCK" ) 2>/dev/null; then
+	echo "${PKG} update already in progress" >&2
+	exit 75
+fi
+
 (
-	echo $$ > "$LOCK"
 	exec >"$LOG" 2>&1
 	trap 'rm -f "$LOCK"' EXIT INT TERM
 

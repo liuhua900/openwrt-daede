@@ -145,3 +145,6 @@ msgstr "现在运行 \"apk upgrade %s\" 吗？这可能会重启当前后端。"
 
 msgid "Truncate %s log on the router? This cannot be undone."
 msgstr "确定要清空路由器上的 %s 日志吗？此操作不可恢复。"
+
+msgid "Unavailable"
+msgstr "不可用"

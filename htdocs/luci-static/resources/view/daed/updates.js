@@ -219,6 +219,8 @@ return view.extend({
 					let meta;
 					if (!entry.r.installed) {
 						meta = _('not installed via package manager');
+						btn.disabled = true;
+						btn.textContent = _('Unavailable');
 					} else if (sameVersion) {
 						meta = 'installed: ' + entry.r.installed + ' · up to date';
 					} else if (updatable) {

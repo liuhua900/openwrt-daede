@@ -138,3 +138,6 @@ msgstr ""
 
 msgid "Truncate %s log on the router? This cannot be undone."
 msgstr ""
+
+msgid "Unavailable"
+msgstr ""
