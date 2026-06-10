@@ -1,8 +1,4 @@
 # SPDX-License-Identifier: GPL-2.0-only
-#
-# DRAFT — daed from a pinned, prebuilt source tarball hosted on the daed-src
-# release (assembled by .github/workflows/assemble-daed-src.yml). No build-time
-# clone or node; PKG_HASH verifies the exact bytes. Needs CI iteration.
 
 include $(TOPDIR)/rules.mk
 
@@ -28,9 +24,6 @@ PKG_BUILD_FLAGS:=no-mips16
 
 GO_PKG:=github.com/daeuniverse/dae-wing
 
-# Aggressive perf build (kept per request): static, stripped, trimpath, PGO,
-# and Go SIMD/newinliner experiments. If a Go toolchain bump breaks the build,
-# drop GOEXPERIMENT below first.
 GO_PKG_LDFLAGS:= \
 	-s -w -buildid= \
 	-linkmode external -extldflags '-static -Wl,-s' \
@@ -91,8 +84,6 @@ define Package/daed/conffiles
 /etc/config/daed
 endef
 
-# Tarball top dir daed-$(PKG_VERSION)/ holds wing/ (=PKG_BUILD_DIR), outbound/,
-# quic-go/. Strip it into DAED_BUILD_DIR so wing/ lands at PKG_BUILD_DIR.
 define Build/Prepare
 	mkdir -p $(DAED_BUILD_DIR)
 	$(TAR) --strip-components=1 -C $(DAED_BUILD_DIR) -xzf $(DL_DIR)/$(PKG_SOURCE)
@@ -104,8 +95,6 @@ DAE_CFLAGS:= \
 	-I$(BPF_HEADERS_DIR)/tools/lib \
 	-I$(BPF_HEADERS_DIR)/arch/$(BPF_KARCH)/include/asm/mach-generic
 
-# Source (incl. dae-core, outbound, quic-go, prebuilt web) is already laid out
-# inside the tarball; only the target-arch bpf generate + go build run here.
 define Build/Compile
 	( \
 		pushd $(PKG_BUILD_DIR) ; \
