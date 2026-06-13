@@ -42,6 +42,54 @@
 </table>
 </details>
 
+## 关于 dae / daed
+
+- **dae** —— 基于 eBPF 的高性能透明代理内核。流量在内核态分流，直连流量几乎零开销，适合做软路由主力代理。
+- **daed** —— dae 的「带 Web 面板」发行版（daed app + dae-wing + dae 核心 + 内嵌前端），开箱即用的图形化管理。
+- **luci-app-daede** —— 统一管理界面，**同一套 UCI 配置同时适配 dae 和 daed**，内核切换无需重装。
+
+### 我们的内核是怎么构建的
+
+不是简单打包上游二进制，而是一条**可复现、性能优化、自托管**的源码构建链：
+
+1. **性能优化栈**（相比原版 dae 的核心差异）
+   - 内核源码用 [olicesx](https://github.com/olicesx) 的性能 fork（eBPF 数据面优化：连接状态合并、egress 重定向、DNS/UDP 路径优化等）
+   - 出站 / QUIC 也用对应的优化分支（`outbound` anytls/sticky-ip 等、`quic-go` 连接池）
+   - **PGO**（Profile-Guided Optimization）：内置 `ci/default.pgo` 采样档，`-pgo=auto` 让编译器按真实热点优化
+   - **Go 1.26** + `GOEXPERIMENT=newinliner,simd`（新内联器 + SIMD），静态链接、`-trimpath`
+
+2. **可复现构建**
+   - 所有上游 commit 锁定在 `ci/pins.env`（单一事实来源）
+   - 装配工作流把固定 commit 的源码冻结成**自托管 tarball**（发布在本仓库 `dae-src` / `daed-src`），并写入 `PKG_HASH`
+   - SDK 只 go-compile 这份冻结源 —— 旧 commit 永远能复现，不受上游变动影响
+
+3. **广架构覆盖**
+   - x86_64 / i386 / aarch64（a53/a72/generic）/ **armv7（a7/a9）** 出完整内核包
+   - armv7 通过移植 [sbwml/openwrt_helloworld](https://github.com/sbwml/openwrt_helloworld) 的 `vmlinux-arm.h` 补丁解决 trace eBPF 编译问题
+
+### 三个外部依赖与闭合状态
+
+| 依赖 | 来源 | 状态 |
+|------|------|------|
+| **PGO 采样档** | 自采样 | ✅ **已 vendored**（`ci/default.pgo`，完全闭合） |
+| **性能 fork**（dae 核心 / outbound / quic-go） | [olicesx](https://github.com/olicesx) → 镜像到 [kenzok8](https://github.com/kenzok8) | ⚠️ **半闭合**：已镜像防删，但仍跟随其 commit；后续自维护 patchset 可完全闭合 |
+| **真上游** | [daeuniverse/dae](https://github.com/daeuniverse/dae) · [daed](https://github.com/daeuniverse/daed) · dae-wing | 🔗 **主动跟随**（真源头，追它是对的） |
+
+> 设计哲学：**把易变、会删的中间层逐步内化**（PGO 已闭、性能 fork 已镜像兜底），**只对真正的源头 daeuniverse 保持跟随**。
+
+### 相比其他第三方 dae/daed 的优势
+
+- **更快**：性能 fork + PGO + 新 Go 优化器，不是原版 daeuniverse 直接打包
+- **更稳**：自托管冻结源 + `PKG_HASH`，上游 force-push / 删库都不影响历史版本构建
+- **更全**：一个 `luci-app-daede` 同时管 dae 和 daed，**热切换内核不用重装**；架构覆盖到 armv7
+- **可追溯**：所有依赖 commit 在 `ci/pins.env` 一处锁定，装配 / 发布全自动且留痕
+
+### 包含什么
+
+- `dae` —— 性能优化版 dae 内核（eBPF 透明代理）
+- `daed` —— daed app + dae-wing + dae 核心 + outbound + quic-go + 内嵌 Web 面板
+- `luci-app-daede` —— 双内核统一 LuCI 管理界面
+
 ## 安装
 
 ### 一键安装
