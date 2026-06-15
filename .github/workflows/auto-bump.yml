@@ -121,43 +121,45 @@ jobs:
           gh workflow run release.yml --ref main -f prerelease=false || \
             gh workflow run release.yml --ref main
 
-  # Independent watchdog: the olicesx perf forks (quic-go/outbound) can go quiet
-  # while official quic-go keeps shipping fixes. Warn (and open a tracking issue)
-  # when our quic-go perf pin is stale, so we can decide whether to backport per
-  # ci/PERF-PATCHES.md. Never blocks the bump.
+  # Independent watchdog: our quic-go = QUICGO_BASE + ci/patches/quic-go, which
+  # reproduces the olicesx perf tip that upstream daeuniverse/dae itself pins.
+  # The only meaningful signal is upstream dae bumping the quic-go it requires —
+  # then we refresh our base/patches to match (ci/PERF-PATCHES.md). Comparing to
+  # quic-go/quic-go releases is meaningless: dae uses an old, API-incompatible
+  # base on purpose. Never blocks the bump.
   perf-staleness:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Check perf-fork staleness vs official quic-go
+      - name: Check quic-go vs what upstream dae requires
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           . ci/pins.env
-          STALE_DAYS=60
-          q_date=$(gh api repos/kenzok8/quic-go/commits/$QUICGO_BASE_COMMIT --jq '.commit.committer.date')
-          o_date=$(gh api repos/kenzok8/outbound/commits/$OUTBOUND_COMMIT --jq '.commit.committer.date')
-          q_age=$(( ( $(date -u +%s) - $(date -u -d "$q_date" +%s) ) / 86400 ))
-          o_age=$(( ( $(date -u +%s) - $(date -u -d "$o_date" +%s) ) / 86400 ))
-          up_tag=$(gh api repos/quic-go/quic-go/releases/latest --jq '.tag_name')
-          up_date=$(gh api repos/quic-go/quic-go/releases/latest --jq '.published_at' | cut -dT -f1)
-          echo "quic-go base age ${q_age}d ($q_date); outbound ${o_age}d ($o_date); official $up_tag ($up_date)"
-          if [ "$q_age" -lt "$STALE_DAYS" ]; then
-            echo "fresh (<${STALE_DAYS}d); no alert."
+          # the quic-go commit upstream dae main pins (go.mod replace target)
+          want=$(curl -fsSL https://raw.githubusercontent.com/daeuniverse/dae/main/go.mod \
+            | grep -E '^replace .*olicesx/quic-go' \
+            | sed -E 's/.*-([0-9a-f]{12})[[:space:]]*$/\1/' | tail -1)
+          ours="$(printf '%s' "$QUICGO_PERF_TIP" | cut -c1-12)"
+          echo "upstream dae requires quic-go ...${want:-?} ; ours reproduces ...${ours}"
+          if [ -z "$want" ] || [ "$want" = "$ours" ]; then
+            echo "quic-go in sync with upstream dae; no alert."
+            # auto-close a stale tracking issue if one is open
+            n=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "Perf fork staleness in:title" --json number --jq '.[0].number' 2>/dev/null || echo "")
+            [ -n "$n" ] && gh issue close "$n" --repo "$GITHUB_REPOSITORY" -c "Back in sync with upstream dae's quic-go; auto-closing." || true
             exit 0
           fi
-          echo "::warning::quic-go base stale ${q_age}d; official quic-go at ${up_tag} (${up_date}). See ci/PERF-PATCHES.md."
-          title="⚠️ Perf fork staleness: quic-go base ${q_age}d old"
+          echo "::warning::upstream dae bumped quic-go to ${want}; refresh ci/patches/quic-go base per ci/PERF-PATCHES.md."
+          title="⚠️ quic-go: upstream dae moved to ${want}"
           body=$(printf '%s\n' \
-            "Automated staleness check (auto-bump.yml)." \
+            "Automated check (auto-bump.yml)." \
             "" \
-            "- quic-go base \`${QUICGO_BASE_COMMIT}\` (+ ci/patches/quic-go) last moved **${q_date}** (${q_age}d ago)" \
-            "- outbound perf pin \`${OUTBOUND_COMMIT}\` last moved **${o_date}** (${o_age}d ago)" \
-            "- official quic-go latest release: **${up_tag}** (${up_date})" \
+            "- upstream **daeuniverse/dae main** now requires quic-go \`...${want}\`" \
+            "- our base+patches reproduce \`...${ours}\` (QUICGO_PERF_TIP)" \
             "" \
-            "Decide whether the newer official quic-go carries a fix worth backporting" \
-            "onto our quic-go base, following ci/PERF-PATCHES.md. Heads-up, not an emergency.")
+            "Refresh our quic-go base / patches to match upstream, following ci/PERF-PATCHES.md," \
+            "then update QUICGO_BASE_COMMIT + QUICGO_PERF_TIP. Heads-up, not an emergency.")
           existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state open --search "Perf fork staleness in:title" --json number --jq '.[0].number' 2>/dev/null || echo "")
           if [ -n "$existing" ]; then
             gh issue edit "$existing" --repo "$GITHUB_REPOSITORY" --title "$title" --body "$body"
