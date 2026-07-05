@@ -64,9 +64,14 @@ jobs:
               && go mod tidy \
               && cp "$GITHUB_WORKSPACE/ci/default.pgo" default.pgo )
 
-          # Prebuild web (frozen lockfile = reproducible) and embed.
+          # Prebuild web and embed. Upstream occasionally updates workspace
+          # catalog specifiers without refreshing pnpm-lock.yaml; normalize the
+          # pinned source lockfile first, then do the real frozen install.
           corepack enable pnpm
-          ( cd "$OUT" && pnpm install --frozen-lockfile && pnpm build --filter daed )
+          ( cd "$OUT" \
+              && pnpm install --lockfile-only --ignore-scripts \
+              && pnpm install --frozen-lockfile \
+              && pnpm build --filter daed )
           mkdir -p "$OUT/wing/webrender/web"
           cp -rf "$OUT/apps/web/dist/"* "$OUT/wing/webrender/web/"
           find "$OUT/wing/webrender/web" -name "*.map" -type f -delete
